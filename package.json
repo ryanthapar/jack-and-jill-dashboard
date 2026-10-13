@@ -1,0 +1,26 @@
+{
+  "name": "jack-and-jill-dashboard",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryanthapar/jack-and-jill-dashboard.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ryanthapar/jack-and-jill-dashboard/issues"
+  },
+  "homepage": "https://github.com/ryanthapar/jack-and-jill-dashboard#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0"
+  }
+}
