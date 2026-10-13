@@ -10,23 +10,34 @@ npm start          # http://localhost:3000
 npm test
 ```
 
-With no `DATABASE_URL`, an embedded Postgres (PGlite) stores data in `data/pgdata`, so no setup is needed.
+With no Firebase settings the app uses an in-memory store, so data is lost when it restarts. That is fine for trying it out.
 On first start an admin is created: set `ADMIN_EMAIL` / `ADMIN_PASSWORD`, or `admin@example.com` is used with a random password printed once to the console.
-To test against a real Postgres: `DATABASE_URL=postgres://... npm test`.
 
-## Deploy on Vercel
+To keep data locally, run the Firestore emulator and set `FIRESTORE_EMULATOR_HOST=localhost:8080`.
+`STORE=firestore-fake npm test` runs the test suite through the Firestore code on an in-memory fake;
+with `FIRESTORE_EMULATOR_HOST` set it runs against the real emulator.
 
-1. In the Vercel project, add a Postgres database (Storage / Marketplace, e.g. Neon). This sets `DATABASE_URL` automatically.
-2. Add environment variables: `ADMIN_EMAIL`, `ADMIN_PASSWORD` (creates the first admin on first request), and `SESSION_SECRET` (any long random string).
-3. Redeploy. Tables are created automatically.
+## Deploy on Vercel (Firestore)
+
+1. Create a Firebase project and a Firestore database (production mode, so client access is denied — only this server reads/writes).
+2. Firebase console → Project settings → Service accounts → Generate new private key. This downloads a JSON file.
+3. In Vercel → Settings → Environment Variables, add:
+   - `FIREBASE_SERVICE_ACCOUNT` — the entire contents of that JSON file
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD` — creates the first admin on the first request
+   - `SESSION_SECRET` — any long random string
+4. Redeploy.
 
 | Env var | Purpose |
 |---|---|
-| `DATABASE_URL` / `POSTGRES_URL` | Postgres connection string (required on Vercel) |
+| `FIREBASE_SERVICE_ACCOUNT` | Service-account key JSON (required in production) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | First admin account, created only if no admin exists |
 | `SESSION_SECRET` | Required in production |
+| `FIRESTORE_EMULATOR_HOST` | Use a local Firestore emulator |
 | `PORT` | Port when run as a server (default 3000) |
 | `NODE_ENV=production` | Enables `Secure` cookies (HTTPS only; Vercel sets this) |
+
+Collections: `users`, `emails` (enforces unique emails), `goals`, `stats` (one doc per agent per day), `sessions`, `login_attempts`.
+No composite indexes are needed.
 
 ## Roles
 

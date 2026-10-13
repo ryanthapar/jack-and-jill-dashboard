@@ -18,10 +18,9 @@
   },
   "homepage": "https://github.com/ryanthapar/jack-and-jill-dashboard#readme",
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.9",
+    "@google-cloud/firestore": "^9.3.1",
     "bcryptjs": "^3.0.3",
     "express": "^5.3.0",
-    "express-session": "^1.19.0",
-    "pg": "^8.23.1"
+    "express-session": "^1.19.0"
   }
 }

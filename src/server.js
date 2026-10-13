@@ -1,37 +1,33 @@
-const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { connect } = require('./db');
+const { createStore, EmailTakenError } = require('./store');
 const { createApp } = require('./app');
 
 const production = process.env.NODE_ENV === 'production';
 
 async function init() {
-  const db = await connect({
-    url: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-    dataDir: process.env.DATA_DIR || path.join(__dirname, '..', 'data', 'pgdata'),
-  });
+  if (production && !process.env.SESSION_SECRET) throw new Error('SESSION_SECRET must be set in production');
+  if (production && !process.env.FIREBASE_SERVICE_ACCOUNT) throw new Error('FIREBASE_SERVICE_ACCOUNT must be set in production');
+  const store = createStore();
 
   // Ensure an admin exists. On first run without ADMIN_PASSWORD (local dev only) a random one is generated.
-  const [admin] = await db.query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
-  if (!admin) {
+  if (!(await store.hasAdmin())) {
     const email = process.env.ADMIN_EMAIL || 'admin@example.com';
     const password = process.env.ADMIN_PASSWORD || (production ? null : crypto.randomBytes(9).toString('base64url'));
     if (!password) {
       console.warn('No admin exists. Set ADMIN_EMAIL and ADMIN_PASSWORD, then redeploy to create one.');
     } else {
-      await db.query(
-        "INSERT INTO users (name, email, password_hash, role) VALUES ('Admin', $1, $2, 'admin') ON CONFLICT DO NOTHING",
-        [email, bcrypt.hashSync(password, 10)]
-      );
-      console.log(`Created admin account: ${email}`);
-      if (!process.env.ADMIN_PASSWORD) console.log(`Generated password (shown once, change it after logging in): ${password}`);
+      try {
+        await store.createUser({ name: 'Admin', email, password_hash: bcrypt.hashSync(password, 10), role: 'admin' });
+        console.log(`Created admin account: ${email}`);
+        if (!process.env.ADMIN_PASSWORD) console.log(`Generated password (shown once, change it after logging in): ${password}`);
+      } catch (e) {
+        if (!(e instanceof EmailTakenError)) throw e; // another instance created it first
+      }
     }
   }
-
-  if (production && !process.env.SESSION_SECRET) console.warn('Warning: set SESSION_SECRET in production.');
-  return createApp(db, { secureCookies: production, sessionSecret: process.env.SESSION_SECRET });
+  return createApp(store, { secureCookies: production, sessionSecret: process.env.SESSION_SECRET });
 }
 
 // The exported Express app waits for init (DB connect + schema) before serving,

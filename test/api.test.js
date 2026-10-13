@@ -2,19 +2,20 @@ const { test, before } = require('node:test');
 const assert = require('node:assert');
 const bcrypt = require('bcryptjs');
 const http = require('node:http');
-const { connect } = require('../src/db');
+const { createStore, FirestoreStore } = require('../src/store');
+const { FakeFirestore } = require('./fake-firestore');
 const { createApp } = require('../src/app');
 
 let base;
 before(async () => {
-  const db = await connect({ url: process.env.DATABASE_URL });
-  if (process.env.DATABASE_URL) await db.query('TRUNCATE users, goals, stats, sessions, login_attempts RESTART IDENTITY CASCADE');
+  // STORE=firestore-fake runs the same suite through FirestoreStore on an in-memory fake;
+  // with FIRESTORE_EMULATOR_HOST set it runs against the real emulator.
+  const store = process.env.STORE === 'firestore-fake' ? new FirestoreStore(new FakeFirestore()) : createStore();
   const hash = bcrypt.hashSync('password123', 4);
   for (const [name, email, role] of [['Admin', 'admin@x.com', 'admin'], ['Ann Agent', 'ann@x.com', 'agent'], ['Bob Agent', 'bob@x.com', 'agent']]) {
-    await db.query('INSERT INTO users (name,email,password_hash,role) VALUES ($1,$2,$3,$4)', [name, email, hash, role]);
+    await store.createUser({ name, email, password_hash: hash, role });
   }
-  await db.query('INSERT INTO goals (user_id) VALUES (2),(3)');
-  const server = http.createServer(createApp(db)).listen(0);
+  const server = http.createServer(createApp(store)).listen(0);
   base = `http://localhost:${server.address().port}`;
   server.unref();
 });
@@ -67,14 +68,18 @@ test('rejects bad input', async () => {
 test('agents cannot use admin endpoints or see others', async () => {
   const bob = await login('bob@x.com');
   assert.equal((await bob('GET', '/api/admin/overview')).status, 403);
-  assert.equal((await bob('PUT', '/api/admin/goals/2', counts(1))).status, 403);
+  assert.equal((await bob('PUT', '/api/admin/goals/x', counts(1))).status, 403);
   assert.equal((await bob('GET', `/api/dashboard?week=${WEEK}`)).body.totals.doors, 0);
 });
 
 test('admin sets goals; agent sees them; overview shows team', async () => {
   const admin = await login('admin@x.com');
-  assert.equal((await admin('PUT', '/api/admin/goals/2', { doors: 100, contacts: 50, calls: 80, conversations: 20, leads: 5 })).status, 200);
-  assert.equal((await admin('PUT', '/api/admin/goals/3', counts(1))).status, 200);
+  const agents = (await admin('GET', '/api/admin/overview')).body.agents;
+  const annId = agents.find((a) => a.name === 'Ann Agent').id;
+  const bobId = agents.find((a) => a.name === 'Bob Agent').id;
+  assert.equal((await admin('PUT', `/api/admin/goals/${annId}`, { doors: 100, contacts: 50, calls: 80, conversations: 20, leads: 5 })).status, 200);
+  assert.equal((await admin('PUT', `/api/admin/goals/${bobId}`, counts(1))).status, 200);
+  assert.equal((await admin('PUT', '/api/admin/goals/nope', counts(1))).status, 404);
   const ann = await login('ann@x.com');
   assert.equal((await ann('GET', `/api/dashboard?week=${WEEK}`)).body.goals.doors, 100);
   const ov = (await admin('GET', `/api/admin/overview?week=${WEEK}`)).body;
