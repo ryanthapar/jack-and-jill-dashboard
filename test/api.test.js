@@ -2,18 +2,18 @@ const { test, before } = require('node:test');
 const assert = require('node:assert');
 const bcrypt = require('bcryptjs');
 const http = require('node:http');
-const { open } = require('../src/db');
+const { connect } = require('../src/db');
 const { createApp } = require('../src/app');
 
 let base;
 before(async () => {
-  const db = open(':memory:');
-  const ins = db.prepare('INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,?)');
+  const db = await connect({ url: process.env.DATABASE_URL });
+  if (process.env.DATABASE_URL) await db.query('TRUNCATE users, goals, stats, sessions, login_attempts RESTART IDENTITY CASCADE');
   const hash = bcrypt.hashSync('password123', 4);
-  ins.run('Admin', 'admin@x.com', hash, 'admin');
-  ins.run('Ann Agent', 'ann@x.com', hash, 'agent');
-  ins.run('Bob Agent', 'bob@x.com', hash, 'agent');
-  db.prepare('INSERT INTO goals (user_id) VALUES (2),(3)').run();
+  for (const [name, email, role] of [['Admin', 'admin@x.com', 'admin'], ['Ann Agent', 'ann@x.com', 'agent'], ['Bob Agent', 'bob@x.com', 'agent']]) {
+    await db.query('INSERT INTO users (name,email,password_hash,role) VALUES ($1,$2,$3,$4)', [name, email, hash, role]);
+  }
+  await db.query('INSERT INTO goals (user_id) VALUES (2),(3)');
   const server = http.createServer(createApp(db)).listen(0);
   base = `http://localhost:${server.address().port}`;
   server.unref();

@@ -1,32 +1,28 @@
 const session = require('express-session');
 
-// Minimal SQLite-backed session store so logins survive restarts.
-class SqliteStore extends session.Store {
+// Postgres-backed session store so logins survive restarts and work across serverless instances.
+class DbStore extends session.Store {
   constructor(db) {
     super();
-    this.get_ = db.prepare('SELECT data FROM sessions WHERE sid = ? AND expires > ?');
-    this.set_ = db.prepare(
-      'INSERT INTO sessions (sid, data, expires) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET data = excluded.data, expires = excluded.expires'
-    );
-    this.del_ = db.prepare('DELETE FROM sessions WHERE sid = ?');
-    this.purge_ = db.prepare('DELETE FROM sessions WHERE expires <= ?');
-    setInterval(() => this.purge_.run(Date.now()), 3600 * 1000).unref();
+    this.db = db;
+    setInterval(() => db.query('DELETE FROM sessions WHERE expires <= $1', [Date.now()]).catch(() => {}), 3600e3).unref();
   }
   expiry(sess) {
     return sess.cookie && sess.cookie.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 864e5;
   }
   get(sid, cb) {
-    try {
-      const row = this.get_.get(sid, Date.now());
-      cb(null, row ? JSON.parse(row.data) : null);
-    } catch (e) { cb(e); }
+    this.db.query('SELECT data FROM sessions WHERE sid = $1 AND expires > $2', [sid, Date.now()])
+      .then((r) => cb(null, r[0] ? JSON.parse(r[0].data) : null), cb);
   }
   set(sid, sess, cb) {
-    try { this.set_.run(sid, JSON.stringify(sess), this.expiry(sess)); cb && cb(); } catch (e) { cb && cb(e); }
+    this.db.query(
+      'INSERT INTO sessions (sid, data, expires) VALUES ($1, $2, $3) ON CONFLICT (sid) DO UPDATE SET data = EXCLUDED.data, expires = EXCLUDED.expires',
+      [sid, JSON.stringify(sess), this.expiry(sess)]
+    ).then(() => cb && cb(), (e) => cb && cb(e));
   }
   destroy(sid, cb) {
-    try { this.del_.run(sid); cb && cb(); } catch (e) { cb && cb(e); }
+    this.db.query('DELETE FROM sessions WHERE sid = $1', [sid]).then(() => cb && cb(), (e) => cb && cb(e));
   }
 }
 
-module.exports = SqliteStore;
+module.exports = DbStore;
