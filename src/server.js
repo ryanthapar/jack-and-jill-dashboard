@@ -35,8 +35,19 @@ async function init() {
 const ready = init();
 ready.catch((e) => console.error('Startup failed:', e));
 const wrapper = express();
-wrapper.use((req, res, next) => ready.then((app) => app(req, res, next), next));
-wrapper.use((err, req, res, next) => res.status(500).json({ error: 'Server unavailable' }));
+wrapper.use(async (req, res, next) => {
+  try {
+    const app = await ready;
+    app(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+});
+// Startup failures (bad config, unreachable database) report their reason instead of crashing the function.
+wrapper.use((err, req, res, next) => {
+  res.status(503).json({ error: 'Server unavailable', reason: String(err && err.message).split('\n')[0].slice(0, 200) });
+});
+process.on('unhandledRejection', (e) => console.error('Unhandled rejection:', e));
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;

@@ -21,8 +21,9 @@ class EmailTakenError extends Error {}
 // ---------------------------------------------------------------------------
 
 class FirestoreStore {
-  constructor(firestore) { this.db = firestore; }
-  col(name) { return this.db.collection(name); }
+  // Collections are namespaced so this app can share a Firebase project with other apps.
+  constructor(firestore, prefix = 'tracker_') { this.db = firestore; this.prefix = prefix; }
+  col(name) { return this.db.collection(this.prefix + name); }
   user(doc) { return doc.exists ? { id: doc.id, ...doc.data() } : undefined; }
 
   async getUser(id) { return this.user(await this.col('users').doc(String(id)).get()); }
@@ -151,7 +152,7 @@ function createStore(env = process.env) {
     } else {
       opts.projectId = env.GCLOUD_PROJECT || 'demo-tracker';
     }
-    return new FirestoreStore(new Firestore(opts));
+    return new FirestoreStore(new Firestore(opts), env.FIRESTORE_PREFIX ?? 'tracker_');
   }
   return new MemoryStore();
 }

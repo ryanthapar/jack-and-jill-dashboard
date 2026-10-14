@@ -36,7 +36,8 @@ with `FIRESTORE_EMULATOR_HOST` set it runs against the real emulator.
 | `PORT` | Port when run as a server (default 3000) |
 | `NODE_ENV=production` | Enables `Secure` cookies (HTTPS only; Vercel sets this) |
 
-Collections: `users`, `emails` (enforces unique emails), `goals`, `stats` (one doc per agent per day), `sessions`, `login_attempts`.
+Collections (all prefixed `tracker_`, or `FIRESTORE_PREFIX`, so the app can share a Firebase project): `users`, `emails` (enforces unique emails), `goals`, `stats` (one doc per agent per day), `sessions`, `login_attempts`.
+A separate Firebase project is still recommended.
 No composite indexes are needed.
 
 ## Roles
