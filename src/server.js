@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { createStore, EmailTakenError } = require('./store');
-const { createApp } = require('./app');
+const { createApp } = require('./create-app');
 
 const production = process.env.NODE_ENV === 'production';
 

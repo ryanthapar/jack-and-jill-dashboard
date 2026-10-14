@@ -2,7 +2,7 @@
   "name": "jack-and-jill-dashboard",
   "version": "1.0.0",
   "description": "",
-  "main": "src/server.js",
+  "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test test/*.test.js"

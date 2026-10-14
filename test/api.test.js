@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const http = require('node:http');
 const { createStore, FirestoreStore } = require('../src/store');
 const { FakeFirestore } = require('./fake-firestore');
-const { createApp } = require('../src/app');
+const { createApp } = require('../src/create-app');
 
 let base;
 before(async () => {
