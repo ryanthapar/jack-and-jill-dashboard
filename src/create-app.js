@@ -206,7 +206,7 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
   app.use((err, req, res, next) => {
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error', reason: String(err && err.message).replace(/\s+/g, ' ').slice(0, 300) });
   });
   return app;
 }

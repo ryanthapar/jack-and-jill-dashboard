@@ -22,7 +22,7 @@
     const res = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && url !== '/api/login') { state.user = null; render(); throw new Error('Please sign in again'); }
-    if (!res.ok) throw new Error(data.error || 'Request failed');
+    if (!res.ok) throw new Error((data.error || 'Request failed') + (data.reason ? ` (${data.reason})` : ''));
     return data;
   }
   const pad = (n) => String(n).padStart(2, '0');

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { createStore, EmailTakenError } = require('./store');
@@ -30,28 +31,37 @@ async function init() {
   return createApp(store, { secureCookies: production, sessionSecret: process.env.SESSION_SECRET });
 }
 
-// The exported Express app waits for init (DB connect + schema) before serving,
-// so it works both as a long-running server and as a Vercel serverless function.
-const ready = init();
-ready.catch((e) => console.error('Startup failed:', e));
+// The exported Express app serves static files immediately and API requests once init (DB + admin
+// check) succeeds. A failed or slow init is not cached: the next request tries again.
+let appPromise = null;
+function getApp() {
+  if (!appPromise) {
+    appPromise = init();
+    appPromise.catch((e) => { console.error('Startup failed:', e); appPromise = null; });
+  }
+  return appPromise;
+}
+getApp().catch(() => {});
+
 const wrapper = express();
+wrapper.use(express.static(path.join(__dirname, '..', 'public')));
 wrapper.use(async (req, res, next) => {
   try {
-    const app = await ready;
+    const app = await getApp();
     app(req, res, next);
   } catch (err) {
     next(err);
   }
 });
-// Startup failures (bad config, unreachable database) report their reason instead of crashing the function.
+// Startup failures report their reason instead of crashing the function.
 wrapper.use((err, req, res, next) => {
-  res.status(503).json({ error: 'Server unavailable', reason: String(err && err.message).split('\n')[0].slice(0, 200) });
+  res.status(503).json({ error: 'Server unavailable', reason: String(err && err.message).replace(/\s+/g, ' ').slice(0, 300) });
 });
 process.on('unhandledRejection', (e) => console.error('Unhandled rejection:', e));
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
-  ready.then(() => wrapper.listen(port, () => console.log(`Listening on http://localhost:${port}`)));
+  getApp().then(() => wrapper.listen(port, () => console.log(`Listening on http://localhost:${port}`)));
 }
 
 module.exports = wrapper;

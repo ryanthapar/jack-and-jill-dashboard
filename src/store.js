@@ -140,21 +140,39 @@ class MemoryStore {
   async clearFails(key) { this.fails.delete(key); }
 }
 
+// Make every store call fail fast instead of hanging forever if the database stops responding.
+function withTimeout(store, ms) {
+  return new Proxy(store, {
+    get(target, prop) {
+      const v = target[prop];
+      if (typeof v !== 'function' || prop === 'constructor') return v;
+      return (...args) => {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Database timed out after ${ms / 1000}s (${String(prop)})`)), ms);
+        });
+        return Promise.race([v.apply(target, args), timeout]).finally(() => clearTimeout(timer));
+      };
+    },
+  });
+}
+
 // FIREBASE_SERVICE_ACCOUNT holds the service-account key JSON. With FIRESTORE_EMULATOR_HOST set,
 // the client talks to the local emulator instead. With neither, fall back to the in-memory store.
 function createStore(env = process.env) {
   if (env.FIREBASE_SERVICE_ACCOUNT || env.FIRESTORE_EMULATOR_HOST) {
     const { Firestore } = require('@google-cloud/firestore');
-    let opts = { ignoreUndefinedProperties: true };
+    // preferRest: plain HTTPS instead of long-lived gRPC channels, which go stale and hang on serverless hosts.
+    let opts = { ignoreUndefinedProperties: true, preferRest: true };
     if (env.FIREBASE_SERVICE_ACCOUNT) {
       const key = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
       opts = { ...opts, projectId: key.project_id, credentials: { client_email: key.client_email, private_key: key.private_key } };
     } else {
       opts.projectId = env.GCLOUD_PROJECT || 'demo-tracker';
     }
-    return new FirestoreStore(new Firestore(opts), env.FIRESTORE_PREFIX ?? 'tracker_');
+    return withTimeout(new FirestoreStore(new Firestore(opts), env.FIRESTORE_PREFIX ?? 'tracker_'), Number(env.DB_TIMEOUT_MS) || 8000);
   }
   return new MemoryStore();
 }
 
-module.exports = { createStore, FirestoreStore, MemoryStore, EmailTakenError, METRICS, zero };
+module.exports = { withTimeout, createStore, FirestoreStore, MemoryStore, EmailTakenError, METRICS, zero };

@@ -2,7 +2,7 @@ const { test, before } = require('node:test');
 const assert = require('node:assert');
 const bcrypt = require('bcryptjs');
 const http = require('node:http');
-const { createStore, FirestoreStore } = require('../src/store');
+const { createStore, FirestoreStore, withTimeout, MemoryStore } = require('../src/store');
 const { FakeFirestore } = require('./fake-firestore');
 const { createApp } = require('../src/create-app');
 
@@ -106,4 +106,12 @@ test('non-JSON writes are rejected (CSRF guard)', async () => {
   const ann = await login('ann@x.com');
   const res = await fetch(base + '/api/logout', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'x' });
   assert.equal(res.status, 415);
+});
+
+test('a hung database call fails fast instead of hanging', async () => {
+  const hung = withTimeout({ getUser: () => new Promise(() => {}), ok: async () => 1 }, 100);
+  assert.equal(await hung.ok(), 1);
+  const t = Date.now();
+  await assert.rejects(hung.getUser('x'), /timed out/);
+  assert.ok(Date.now() - t < 1000);
 });
