@@ -3,6 +3,8 @@
     ['doors', 'Doors knocked'], ['contacts', 'Contacts'], ['calls', 'Calls made'],
     ['conversations', 'Conversations'], ['leads', 'Leads generated'],
   ];
+  // Leads are tracked only; goals are never set for them.
+  const GOAL_METRICS = METRICS.filter(([k]) => k !== 'leads');
   const root = document.getElementById('app');
   const state = { user: null, tab: null, week: null, today: null };
 
@@ -34,13 +36,13 @@
   const pct = (v, g) => (g > 0 ? Math.round((v / g) * 100) : null);
   function flash(el, text, ok) { el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = text; }
 
-  function numberInputs(values, prefix) {
-    return METRICS.map(([k, label]) => h('div', {}, h('label', { for: prefix + k }, label),
+  function numberInputs(values, prefix, metrics = METRICS) {
+    return metrics.map(([k, label]) => h('div', {}, h('label', { for: prefix + k }, label),
       h('input', { id: prefix + k, name: k, type: 'number', min: 0, max: 100000, step: 1, inputmode: 'numeric', value: values ? values[k] : 0, required: true })));
   }
-  function readNumbers(form) {
+  function readNumbers(form, metrics = METRICS) {
     const out = {};
-    for (const [k] of METRICS) out[k] = Number(form.elements[k].value);
+    for (const [k] of metrics) out[k] = Number(form.elements[k].value);
     return out;
   }
   function weekNav(onChange) {
@@ -72,6 +74,10 @@
 
   function metricCards(totals, goals) {
     return h('div', { class: 'grid' }, METRICS.map(([k, label]) => {
+      if (!GOAL_METRICS.some(([g]) => g === k)) return h('div', { class: 'card metric' },
+        h('div', { class: 'muted' }, label),
+        h('div', { class: 'top' }, h('span', { class: 'val' }, totals[k])),
+        h('div', { class: 'muted' }, 'Tracked only'));
       const p = pct(totals[k], goals[k]);
       const left = goals[k] > 0 ? Math.max(goals[k] - totals[k], 0) : null;
       return h('div', { class: 'card metric' },
@@ -85,7 +91,7 @@
   }
 
   function goalsBanner(totals, goals) {
-    const set = METRICS.filter(([k]) => goals[k] > 0);
+    const set = GOAL_METRICS.filter(([k]) => goals[k] > 0);
     if (!set.length) return h('div', { class: 'card goals' }, h('h2', {}, 'Your weekly goals'), h('div', { class: 'muted' }, 'No goals set yet. Your admin sets weekly targets for you.'));
     const hit = set.filter(([k]) => totals[k] >= goals[k]).length;
     return h('div', { class: 'card goals' },
@@ -151,6 +157,7 @@
         h('tbody', {}, active.map((a) => h('tr', {},
           h('td', {}, h('button', { class: 'link', onclick: () => agentDetail(host, a) }, a.name)),
           METRICS.map(([k]) => {
+            if (k === 'leads') return h('td', { class: 'cell' }, a.totals[k]);
             const p = pct(a.totals[k], a.goals[k]);
             return h('td', { class: 'cell' }, a.totals[k], h('small', {}, a.goals[k] > 0 ? `${p}% of ${a.goals[k]}` : 'no goal'));
           }),
@@ -175,9 +182,9 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (note && !confirm(note)) return;
-          try { await save(readNumbers(form)); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
+          try { await save({ ...readNumbers(form, GOAL_METRICS), leads: 0 }); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
         },
-      }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-')), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
+      }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-', GOAL_METRICS)), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
       return h('div', { class: 'card' }, h('h2', {}, title), form);
     }
     host.replaceChildren(
