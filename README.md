@@ -24,14 +24,14 @@ with `FIRESTORE_EMULATOR_HOST` set it runs against the real emulator.
 3. In Vercel → Settings → Environment Variables, add:
    - `FIREBASE_SERVICE_ACCOUNT` — the entire contents of that JSON file
    - `ADMIN_EMAIL`, `ADMIN_PASSWORD` — creates the first admin on the first request
-   - `SESSION_SECRET` — any long random string
+   - `SESSION_SECRET` — optional; any long random string (if omitted, one is derived from the Firebase key)
 4. Redeploy.
 
 | Env var | Purpose |
 |---|---|
 | `FIREBASE_SERVICE_ACCOUNT` | Service-account key JSON (required in production) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | First admin account, created only if no admin exists |
-| `SESSION_SECRET` | Required in production |
+| `SESSION_SECRET` | Optional; cookie-signing secret (derived from the Firebase key if unset) |
 | `FIRESTORE_EMULATOR_HOST` | Use a local Firestore emulator |
 | `PORT` | Port when run as a server (default 3000) |
 | `NODE_ENV=production` | Enables `Secure` cookies (HTTPS only; Vercel sets this) |

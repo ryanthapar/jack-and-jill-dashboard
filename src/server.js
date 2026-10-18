@@ -8,9 +8,14 @@ const { createApp } = require('./create-app');
 const production = process.env.NODE_ENV === 'production';
 
 async function init() {
-  if (production && !process.env.SESSION_SECRET) throw new Error('SESSION_SECRET must be set in production');
   if (production && !process.env.FIREBASE_SERVICE_ACCOUNT) throw new Error('FIREBASE_SERVICE_ACCOUNT must be set in production');
   const store = createStore();
+  // Cookie-signing secret: SESSION_SECRET if set, otherwise derived from the Firebase private key (stable across deploys).
+  let sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const key = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).private_key || '';
+    sessionSecret = crypto.createHmac('sha256', key).update('tracker-session-secret').digest('hex');
+  }
 
   // Ensure an admin exists. On first run without ADMIN_PASSWORD (local dev only) a random one is generated.
   if (!(await store.hasAdmin())) {
@@ -28,7 +33,7 @@ async function init() {
       }
     }
   }
-  return createApp(store, { secureCookies: production, sessionSecret: process.env.SESSION_SECRET });
+  return createApp(store, { secureCookies: production, sessionSecret });
 }
 
 // The exported Express app serves static files immediately and API requests once init (DB + admin
