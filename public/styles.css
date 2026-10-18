@@ -42,3 +42,7 @@ th:first-child, td:first-child { text-align: left; } th { font-weight: 600; colo
 .cell small { display: block; color: var(--muted); font-size: 11px; }
 button.link, .link { color: var(--brand); cursor: pointer; text-decoration: underline; background: none; border: 0; font: inherit; padding: 0; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.metric .val .of { color: var(--muted); font-size: 16px; font-weight: 600; }
+.goals h2 { display: flex; align-items: center; gap: 10px; }
+.goalrow { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.goalrow .gv { font-size: 32px; font-weight: 700; color: var(--brand); line-height: 1.1; }

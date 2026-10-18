@@ -73,12 +73,25 @@
   function metricCards(totals, goals) {
     return h('div', { class: 'grid' }, METRICS.map(([k, label]) => {
       const p = pct(totals[k], goals[k]);
+      const left = goals[k] > 0 ? Math.max(goals[k] - totals[k], 0) : null;
       return h('div', { class: 'card metric' },
         h('div', { class: 'muted' }, label),
-        h('div', { class: 'top' }, h('span', { class: 'val' }, totals[k]), h('span', { class: 'goal' }, goals[k] > 0 ? `goal ${goals[k]}` : 'no goal set')),
+        h('div', { class: 'top' },
+          h('span', { class: 'val' }, totals[k], goals[k] > 0 && h('span', { class: 'of' }, ` / ${goals[k]}`)),
+          goals[k] > 0 ? null : h('span', { class: 'goal' }, 'no goal set')),
         h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })),
-        h('div', { class: 'muted' }, p == null ? '—' : `${p}% of weekly goal`));
+        h('div', { class: 'muted' }, p == null ? '—' : left === 0 ? `${p}% of weekly goal · goal reached` : `${p}% of weekly goal · ${left} to go`));
     }));
+  }
+
+  function goalsBanner(totals, goals) {
+    const set = METRICS.filter(([k]) => goals[k] > 0);
+    if (!set.length) return h('div', { class: 'card goals' }, h('h2', {}, 'Your weekly goals'), h('div', { class: 'muted' }, 'No goals set yet. Your admin sets weekly targets for you.'));
+    const hit = set.filter(([k]) => totals[k] >= goals[k]).length;
+    return h('div', { class: 'card goals' },
+      h('h2', {}, 'Your weekly goals', h('span', { class: 'pill' + (hit === set.length ? ' ok' : '') }, `${hit} of ${set.length} reached`)),
+      h('div', { class: 'goalrow' }, set.map(([k, label]) => h('div', { class: 'g' },
+        h('div', { class: 'gv' }, goals[k]), h('div', { class: 'muted' }, label)))));
   }
 
   function dailyTable(daily) {
@@ -98,6 +111,7 @@
     host.replaceChildren(...[
       extra ? extra(data) : null,
       weekNav((w) => { state.week = w; dashboardView(host, url, extra).catch(console.error); }),
+      goalsBanner(data.totals, data.goals),
       metricCards(data.totals, data.goals),
       h('div', { class: 'card' }, h('h2', {}, 'Daily breakdown'), dailyTable(data.daily))].filter(Boolean));
   }
