@@ -46,3 +46,8 @@ button.link, .link { color: var(--brand); cursor: pointer; text-decoration: unde
 .goals h2 { display: flex; align-items: center; gap: 10px; }
 .goalrow { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
 .goalrow .gv { font-size: 32px; font-weight: 700; color: var(--brand); line-height: 1.1; }
+.cta { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cta h2 { margin-bottom: 4px; }
+.grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid2 .card { margin-bottom: 0; } .grid2 { margin-bottom: 16px; }
+.prog { margin-bottom: 12px; } .prog .top { display: flex; justify-content: space-between; gap: 8px; }

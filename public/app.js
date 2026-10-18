@@ -122,6 +122,49 @@
       h('div', { class: 'card' }, h('h2', {}, 'Daily breakdown'), dailyTable(data.daily))].filter(Boolean));
   }
 
+  // Daily goal = weekly goal spread over 7 days, rounded up.
+  const DAYS_PER_WEEK = 7;
+  async function homeView(host) {
+    host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
+    const thisWeek = weekStartOf(state.today);
+    const [cur, prev] = await Promise.all([
+      api('GET', `/api/dashboard?week=${thisWeek}`),
+      api('GET', `/api/dashboard?week=${addDays(thisWeek, -7)}`)]);
+    const today = cur.daily.find((d) => d.date === state.today);
+    const goals = cur.goals;
+    const daily = (k) => Math.ceil(goals[k] / DAYS_PER_WEEK);
+    const pastWeek = [...prev.daily, ...cur.daily].filter((d) => d.date < state.today && d.date >= addDays(state.today, -7));
+    const missing = pastWeek.filter((d) => !d.entered);
+
+    const bar = (v, g) => { const p = pct(v, g); return h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })); };
+    const row = (label, v, g, unit) => g > 0
+      ? h('div', { class: 'prog' }, h('div', { class: 'top' }, h('span', {}, label), h('span', { class: 'muted' }, `${v} / ${g} · ${pct(v, g)}%`)), bar(v, g))
+      : null;
+
+    const logged = today && today.entered;
+    const cta = h('div', { class: 'card cta' },
+      h('div', {}, h('h2', {}, logged ? "Today's activity is logged" : "Log today's activity"),
+        h('div', { class: 'muted' }, logged ? 'You can update today’s numbers if anything changed.' : 'Add today’s numbers to move your progress toward your goals.')),
+      h('button', { class: 'btn primary', onclick: () => { state.tab = 'log'; render(); } }, logged ? 'Update today' : 'Log today'));
+
+    const missingCard = h('div', { class: 'card' }, h('h2', {}, 'Past 7 days'),
+      missing.length
+        ? [h('div', { class: 'msg err', style: 'margin:0 0 8px' }, `${missing.length} day${missing.length > 1 ? 's' : ''} missing a log:`),
+          h('div', { class: 'row' }, missing.map((d) => h('span', { class: 'pill bad' }, fmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }))))]
+        : h('div', { class: 'msg ok', style: 'margin:0' }, 'All caught up — every day is logged.'));
+
+    const goalCard = (title, vals, goalOf, note) => h('div', { class: 'card' }, h('h2', {}, title), note && h('div', { class: 'muted', style: 'margin-bottom:10px' }, note),
+      GOAL_METRICS.map(([k, label]) => row(label, vals[k], goalOf(k))).filter(Boolean));
+    const anyGoal = GOAL_METRICS.some(([k]) => goals[k] > 0);
+
+    host.replaceChildren(cta,
+      anyGoal ? h('div', { class: 'grid2' },
+        goalCard("Today's goal", today || {}, daily, `${fmt(state.today, { weekday: 'long', month: 'short', day: 'numeric' })}`),
+        goalCard('Weekly goal', cur.totals, (k) => goals[k], `${short(cur.weekStart)} – ${short(cur.weekEnd)}`))
+        : h('div', { class: 'card' }, h('div', { class: 'muted' }, 'No goals set yet. Your admin sets weekly targets for you.')),
+      missingCard);
+  }
+
   function logView(host) {
     let date = state.today;
     const msg = h('div', { role: 'status' });
@@ -238,7 +281,7 @@
     const isAdmin = state.user.role === 'admin';
     const tabs = isAdmin
       ? [['overview', 'Team', overviewView], ['goals', 'Weekly goals', goalsView], ['agents', 'Agents', agentsView], ['account', 'Account', accountView]]
-      : [['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['account', 'Account', accountView]];
+      : [['home', 'Home', homeView], ['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['account', 'Account', accountView]];
     if (!state.tab || !tabs.some((t) => t[0] === state.tab)) state.tab = tabs[0][0];
     const host = h('main', {});
     const view = tabs.find((t) => t[0] === state.tab)[2];
