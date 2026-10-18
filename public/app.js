@@ -149,8 +149,8 @@
 
     const missingCard = h('div', { class: 'card' }, h('h2', {}, 'Past 7 days'),
       missing.length
-        ? [h('div', { class: 'msg err', style: 'margin:0 0 8px' }, `${missing.length} day${missing.length > 1 ? 's' : ''} missing a log:`),
-          h('div', { class: 'row' }, missing.map((d) => h('span', { class: 'pill bad' }, fmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }))))]
+        ? [h('div', { class: 'msg err', style: 'margin:0 0 8px' }, `${missing.length} day${missing.length > 1 ? 's' : ''} missing a log — tap a date to log it:`),
+          h('div', { class: 'row' }, missing.map((d) => h('button', { class: 'pill bad chip', title: 'Log this day', onclick: () => { state.logDate = d.date; state.tab = 'log'; render(); } }, fmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }), ' · Log')))]
         : h('div', { class: 'msg ok', style: 'margin:0' }, 'All caught up — every day is logged.'));
 
     const goalCard = (title, vals, goalOf, note) => h('div', { class: 'card' }, h('h2', {}, title), note && h('div', { class: 'muted', style: 'margin-bottom:10px' }, note),
@@ -166,7 +166,8 @@
   }
 
   function logView(host) {
-    let date = state.today;
+    let date = state.logDate || state.today;
+    state.logDate = null;
     const msg = h('div', { role: 'status' });
     const formHost = h('div', {});
     async function load() {
