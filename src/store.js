@@ -15,6 +15,7 @@ class EmailTakenError extends Error {}
 // Both stores expose the same async interface; the app never touches Firestore directly.
 //   users:    getUser(id) getUserByEmail(email) createUser(u) updateUser(id, fields) listAgents() hasAdmin()
 //   goals:    getGoals(ids) -> {id: counts} setGoals(id, counts) setGoalsForAllAgents(counts)
+//   history:  addGoalHistory(userId, entry) listGoalHistory(userId, limit) -> newest first
 //   stats:    upsertStat(userId, date, counts) getWeekStats(userIds, weekStart) -> {userId: {date: counts}}
 //   sessions: getSession(sid) setSession(sid, data, expires) deleteSession(sid)
 //   throttle: failCount(key) recordFail(key, windowMs) clearFails(key)
@@ -65,6 +66,13 @@ class FirestoreStore {
     }
   }
 
+  async addGoalHistory(userId, entry) { await this.col('goal_history').add({ user_id: String(userId), ...entry }); }
+  // Filter only (no orderBy) so no composite index is needed; sorted in memory.
+  async listGoalHistory(userId, limit = 50) {
+    const snap = await this.col('goal_history').where('user_id', '==', String(userId)).get();
+    return snap.docs.map((d) => { const { user_id, ...e } = d.data(); return e; }).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+  }
+
   async upsertStat(userId, date, counts) {
     await this.col('stats').doc(statId(userId, date)).set({ user_id: String(userId), date, ...pickCounts(counts), updated_at: new Date().toISOString() });
   }
@@ -102,7 +110,7 @@ class FirestoreStore {
 
 // In-memory store for local development without credentials, and for tests. Data is lost on restart.
 class MemoryStore {
-  constructor() { this.users = new Map(); this.emails = new Map(); this.goals = new Map(); this.stats = new Map(); this.sessions = new Map(); this.fails = new Map(); this.seq = 0; }
+  constructor() { this.users = new Map(); this.emails = new Map(); this.goals = new Map(); this.history = []; this.stats = new Map(); this.sessions = new Map(); this.fails = new Map(); this.seq = 0; }
 
   async getUser(id) { const u = this.users.get(String(id)); return u && { ...u }; }
   async getUserByEmail(email) { const id = this.emails.get(lower(email)); return id ? this.getUser(id) : undefined; }
@@ -121,6 +129,11 @@ class MemoryStore {
   async getGoals(ids) { return Object.fromEntries(ids.filter((id) => this.goals.has(String(id))).map((id) => [id, { ...this.goals.get(String(id)) }])); }
   async setGoals(id, counts) { this.goals.set(String(id), pickCounts(counts)); }
   async setGoalsForAllAgents(counts) { for (const a of await this.listAgents()) this.goals.set(a.id, pickCounts(counts)); }
+
+  async addGoalHistory(userId, entry) { this.history.push({ user_id: String(userId), ...entry }); }
+  async listGoalHistory(userId, limit = 50) {
+    return this.history.filter((e) => e.user_id === String(userId)).map(({ user_id, ...e }) => e).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+  }
 
   async upsertStat(userId, date, counts) { this.stats.set(statId(userId, date), { ...pickCounts(counts) }); }
   async getWeekStats(userIds, weekStart) {

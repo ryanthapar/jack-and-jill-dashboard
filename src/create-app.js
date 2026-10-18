@@ -186,17 +186,39 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
     res.json({ ok: true });
   });
 
+  // Save goals and append a history entry (skipped when nothing changed).
+  async function changeGoals(u, values, by) {
+    const before = (await store.getGoals([u.id]))[u.id] || zero();
+    await store.setGoals(u.id, values);
+    if (METRICS.every((m) => before[m] === values[m])) return;
+    await store.addGoalHistory(u.id, { at: new Date().toISOString(), by: by.id === u.id ? 'self' : 'admin', byName: by.name, from: before, to: values });
+  }
+
+  // ---- agent: own goals + change history ----
+  const requireAgent = (req, res, next) =>
+    req.user.role === 'agent' ? next() : res.status(403).json({ error: 'Agent access required' });
+  app.get('/api/goals', requireAuth, requireAgent, async (req, res) => {
+    const [goals, history] = await Promise.all([store.getGoals([req.user.id]), store.listGoalHistory(req.user.id)]);
+    res.json({ goals: goals[req.user.id] || zero(), history });
+  });
+  app.put('/api/goals', requireAuth, requireAgent, async (req, res) => {
+    const { values, error } = parseCounts(req.body || {});
+    if (error) return res.status(400).json({ error });
+    await changeGoals(req.user, values, req.user);
+    res.json({ ok: true });
+  });
+
   // Set weekly goals for one agent, or for every agent when :id is "all".
   app.put('/api/admin/goals/:id', requireAuth, requireAdmin, async (req, res) => {
     const { values, error } = parseCounts(req.body || {});
     if (error) return res.status(400).json({ error });
     if (req.params.id === 'all') {
-      await store.setGoalsForAllAgents(values);
+      for (const a of await store.listAgents()) await changeGoals(a, values, req.user);
       return res.json({ ok: true });
     }
     const u = await userById(req.params.id);
     if (!u || u.role !== 'agent') return res.status(404).json({ error: 'Agent not found' });
-    await store.setGoals(u.id, values);
+    await changeGoals(u, values, req.user);
     res.json({ ok: true });
   });
 

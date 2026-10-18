@@ -89,6 +89,22 @@ test('admin sets goals; agent sees them; overview shows team', async () => {
   assert.equal((await ann('GET', `/api/dashboard?week=${WEEK}`)).body.goals.leads, 9);
 });
 
+test('agent sets own goals and sees a history of changes', async () => {
+  const bob = await login('bob@x.com');
+  assert.equal((await bob('PUT', '/api/goals', { ...counts(1), doors: -1 })).status, 400);
+  assert.equal((await bob('PUT', '/api/goals', { ...counts(4), doors: 40 })).status, 200);
+  assert.equal((await bob('PUT', '/api/goals', { ...counts(4), doors: 40 })).status, 200); // no-op: not logged
+  const { goals, history } = (await bob('GET', '/api/goals')).body;
+  assert.equal(goals.doors, 40);
+  assert.equal(history.length, 3); // admin set 1, admin set-all 9, then Bob's own change
+  assert.equal(history[0].by, 'self');
+  assert.equal(history[0].from.doors, 9);
+  assert.equal(history[0].to.doors, 40);
+  assert.equal(history[1].by, 'admin');
+  const admin = await login('admin@x.com');
+  assert.equal((await admin('GET', '/api/goals')).status, 403);
+});
+
 test('admin manages agents; deactivated agent is locked out', async () => {
   const admin = await login('admin@x.com');
   assert.equal((await admin('POST', '/api/admin/agents', { name: 'Cy', email: 'cy@x.com', password: 'short' })).status, 400);

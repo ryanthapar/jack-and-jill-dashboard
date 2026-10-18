@@ -165,6 +165,35 @@
       missingCard);
   }
 
+  async function myGoalsView(host) {
+    host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
+    const { goals, history } = await api('GET', '/api/goals');
+    const msg = h('div', { role: 'status' });
+    const form = h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await api('PUT', '/api/goals', { ...readNumbers(form, GOAL_METRICS), leads: 0 });
+          flash(msg, 'Goals saved.', true);
+          myGoalsView(host).catch(console.error);
+        } catch (err) { flash(msg, err.message, false); }
+      },
+    }, h('div', { class: 'grid' }, numberInputs(goals, 'mg-', GOAL_METRICS)),
+      h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
+    const changes = (e) => GOAL_METRICS.filter(([k]) => e.from[k] !== e.to[k]).map(([k, l]) => `${l}: ${e.from[k]} → ${e.to[k]}`).join(', ');
+    host.replaceChildren(
+      h('div', { class: 'card' }, h('h2', {}, 'My weekly goals'),
+        h('p', { class: 'muted' }, 'Set your weekly targets. Daily goals on the Home tab are worked out from these. Leads are tracked only and have no goal.'), form),
+      h('div', { class: 'card' }, h('h2', {}, 'Goal history'),
+        history.length
+          ? h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Changed by'), h('th', {}, 'Change'))),
+            h('tbody', {}, history.map((e) => h('tr', {},
+              h('td', {}, new Date(e.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })),
+              h('td', {}, e.by === 'self' ? 'You' : `${e.byName} (admin)`),
+              h('td', { style: 'text-align:left' }, changes(e) || '—'))))))
+          : h('div', { class: 'muted' }, 'No changes yet.')));
+  }
+
   function logView(host) {
     let date = state.logDate || state.today;
     state.logDate = null;
@@ -282,7 +311,7 @@
     const isAdmin = state.user.role === 'admin';
     const tabs = isAdmin
       ? [['overview', 'Team', overviewView], ['goals', 'Weekly goals', goalsView], ['agents', 'Agents', agentsView], ['account', 'Account', accountView]]
-      : [['home', 'Home', homeView], ['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['account', 'Account', accountView]];
+      : [['home', 'Home', homeView], ['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['mygoals', 'My goals', myGoalsView], ['account', 'Account', accountView]];
     if (!state.tab || !tabs.some((t) => t[0] === state.tab)) state.tab = tabs[0][0];
     const host = h('main', {});
     const view = tabs.find((t) => t[0] === state.tab)[2];
