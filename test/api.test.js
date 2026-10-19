@@ -103,6 +103,11 @@ test('agent sets own goals and sees a history of changes', async () => {
   assert.equal(history[1].by, 'admin');
   const admin = await login('admin@x.com');
   assert.equal((await admin('GET', '/api/goals')).status, 403);
+  const bobId = (await admin('GET', '/api/admin/overview')).body.agents.find((x) => x.name === 'Bob Agent').id;
+  const seen = (await admin('GET', `/api/admin/agents/${bobId}/goal-history`)).body.history;
+  assert.equal(seen.length, 3);
+  assert.equal((await bob('GET', `/api/admin/agents/${bobId}/goal-history`)).status, 403);
+  assert.equal((await admin('GET', '/api/admin/agents/nope/goal-history')).status, 404);
 });
 
 test('admin manages agents; deactivated agent is locked out', async () => {

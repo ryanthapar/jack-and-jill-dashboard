@@ -165,6 +165,18 @@
       missingCard);
   }
 
+  function goalHistoryCard(history, mine) {
+    const changes = (e) => GOAL_METRICS.filter(([k]) => e.from[k] !== e.to[k]).map(([k, l]) => `${l}: ${e.from[k]} → ${e.to[k]}`).join(', ');
+    return h('div', { class: 'card' }, h('h2', {}, 'Goal history'),
+      history.length
+        ? h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Changed by'), h('th', {}, 'Change'))),
+          h('tbody', {}, history.map((e) => h('tr', {},
+            h('td', {}, new Date(e.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })),
+            h('td', {}, e.by === 'self' ? (mine ? 'You' : 'Agent') : `${e.byName} (admin)`),
+            h('td', { style: 'text-align:left' }, changes(e) || '—'))))))
+        : h('div', { class: 'muted' }, 'No changes yet.'));
+  }
+
   async function myGoalsView(host) {
     host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
     const { goals, history } = await api('GET', '/api/goals');
@@ -180,18 +192,10 @@
       },
     }, h('div', { class: 'grid' }, numberInputs(goals, 'mg-', GOAL_METRICS)),
       h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
-    const changes = (e) => GOAL_METRICS.filter(([k]) => e.from[k] !== e.to[k]).map(([k, l]) => `${l}: ${e.from[k]} → ${e.to[k]}`).join(', ');
     host.replaceChildren(
       h('div', { class: 'card' }, h('h2', {}, 'My weekly goals'),
         h('p', { class: 'muted' }, 'Set your weekly targets. Daily goals on the Home tab are worked out from these. Leads are tracked only and have no goal.'), form),
-      h('div', { class: 'card' }, h('h2', {}, 'Goal history'),
-        history.length
-          ? h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Changed by'), h('th', {}, 'Change'))),
-            h('tbody', {}, history.map((e) => h('tr', {},
-              h('td', {}, new Date(e.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })),
-              h('td', {}, e.by === 'self' ? 'You' : `${e.byName} (admin)`),
-              h('td', { style: 'text-align:left' }, changes(e) || '—'))))))
-          : h('div', { class: 'muted' }, 'No changes yet.')));
+      goalHistoryCard(history, true));
   }
 
   function logView(host) {
@@ -244,6 +248,7 @@
     const inner = h('div', {});
     host.replaceChildren(h('div', { style: 'margin-bottom:12px' }, back, ' ', h('strong', {}, a.name)), inner);
     dashboardView(inner, `/api/admin/agents/${a.id}/dashboard`).catch(console.error);
+    api('GET', `/api/admin/agents/${a.id}/goal-history`).then(({ history }) => host.append(goalHistoryCard(history, false))).catch(console.error);
   }
 
   async function goalsView(host) {

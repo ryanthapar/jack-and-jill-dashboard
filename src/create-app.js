@@ -159,6 +159,12 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
     res.json({ agent: publicUser(u), ...(await weekReport(u.id, resolveWeek(req))) });
   });
 
+  app.get('/api/admin/agents/:id/goal-history', requireAuth, requireAdmin, async (req, res) => {
+    const u = await userById(req.params.id);
+    if (!u || u.role !== 'agent') return res.status(404).json({ error: 'Agent not found' });
+    res.json({ history: await store.listGoalHistory(u.id, 100) });
+  });
+
   app.post('/api/admin/agents', requireAuth, requireAdmin, async (req, res) => {
     const { name, email, password } = req.body || {};
     if (typeof name !== 'string' || !name.trim() || name.length > 100) return res.status(400).json({ error: 'Name required' });
