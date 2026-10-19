@@ -3,6 +3,8 @@
     ['doors', 'Doors knocked'], ['contacts', 'Contacts'], ['calls', 'Calls made'],
     ['conversations', 'Conversations'], ['leads', 'Leads generated'],
   ];
+  // Leads are tracked only; goals are never set for them.
+  const GOAL_METRICS = METRICS.filter(([k]) => k !== 'leads');
   const root = document.getElementById('app');
   const state = { user: null, tab: null, week: null, today: null };
 
@@ -34,13 +36,13 @@
   const pct = (v, g) => (g > 0 ? Math.round((v / g) * 100) : null);
   function flash(el, text, ok) { el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = text; }
 
-  function numberInputs(values, prefix) {
-    return METRICS.map(([k, label]) => h('div', {}, h('label', { for: prefix + k }, label),
+  function numberInputs(values, prefix, metrics = METRICS) {
+    return metrics.map(([k, label]) => h('div', {}, h('label', { for: prefix + k }, label),
       h('input', { id: prefix + k, name: k, type: 'number', min: 0, max: 100000, step: 1, inputmode: 'numeric', value: values ? values[k] : 0, required: true })));
   }
-  function readNumbers(form) {
+  function readNumbers(form, metrics = METRICS) {
     const out = {};
-    for (const [k] of METRICS) out[k] = Number(form.elements[k].value);
+    for (const [k] of metrics) out[k] = Number(form.elements[k].value);
     return out;
   }
   function weekNav(onChange) {
@@ -72,13 +74,30 @@
 
   function metricCards(totals, goals) {
     return h('div', { class: 'grid' }, METRICS.map(([k, label]) => {
+      if (!GOAL_METRICS.some(([g]) => g === k)) return h('div', { class: 'card metric' },
+        h('div', { class: 'muted' }, label),
+        h('div', { class: 'top' }, h('span', { class: 'val' }, totals[k])),
+        h('div', { class: 'muted' }, 'Tracked only'));
       const p = pct(totals[k], goals[k]);
+      const left = goals[k] > 0 ? Math.max(goals[k] - totals[k], 0) : null;
       return h('div', { class: 'card metric' },
         h('div', { class: 'muted' }, label),
-        h('div', { class: 'top' }, h('span', { class: 'val' }, totals[k]), h('span', { class: 'goal' }, goals[k] > 0 ? `goal ${goals[k]}` : 'no goal set')),
+        h('div', { class: 'top' },
+          h('span', { class: 'val' }, totals[k], goals[k] > 0 && h('span', { class: 'of' }, ` / ${goals[k]}`)),
+          goals[k] > 0 ? null : h('span', { class: 'goal' }, 'no goal set')),
         h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })),
-        h('div', { class: 'muted' }, p == null ? '—' : `${p}% of weekly goal`));
+        h('div', { class: 'muted' }, p == null ? '—' : left === 0 ? `${p}% of weekly goal · goal reached` : `${p}% of weekly goal · ${left} to go`));
     }));
+  }
+
+  function goalsBanner(totals, goals) {
+    const set = GOAL_METRICS.filter(([k]) => goals[k] > 0);
+    if (!set.length) return h('div', { class: 'card goals' }, h('h2', {}, 'Your weekly goals'), h('div', { class: 'muted' }, 'No goals set yet. Your admin sets weekly targets for you.'));
+    const hit = set.filter(([k]) => totals[k] >= goals[k]).length;
+    return h('div', { class: 'card goals' },
+      h('h2', {}, 'Your weekly goals', h('span', { class: 'pill' + (hit === set.length ? ' ok' : '') }, `${hit} of ${set.length} reached`)),
+      h('div', { class: 'goalrow' }, set.map(([k, label]) => h('div', { class: 'g' },
+        h('div', { class: 'gv' }, goals[k]), h('div', { class: 'muted' }, label)))));
   }
 
   function dailyTable(daily) {
@@ -98,12 +117,90 @@
     host.replaceChildren(...[
       extra ? extra(data) : null,
       weekNav((w) => { state.week = w; dashboardView(host, url, extra).catch(console.error); }),
+      goalsBanner(data.totals, data.goals),
       metricCards(data.totals, data.goals),
       h('div', { class: 'card' }, h('h2', {}, 'Daily breakdown'), dailyTable(data.daily))].filter(Boolean));
   }
 
+  // Daily goal = weekly goal spread over 7 days, rounded up.
+  const DAYS_PER_WEEK = 7;
+  async function homeView(host) {
+    host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
+    const thisWeek = weekStartOf(state.today);
+    const [cur, prev] = await Promise.all([
+      api('GET', `/api/dashboard?week=${thisWeek}`),
+      api('GET', `/api/dashboard?week=${addDays(thisWeek, -7)}`)]);
+    const today = cur.daily.find((d) => d.date === state.today);
+    const goals = cur.goals;
+    const daily = (k) => Math.ceil(goals[k] / DAYS_PER_WEEK);
+    const pastWeek = [...prev.daily, ...cur.daily].filter((d) => d.date < state.today && d.date >= addDays(state.today, -7));
+    const missing = pastWeek.filter((d) => !d.entered);
+
+    const bar = (v, g) => { const p = pct(v, g); return h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })); };
+    const row = (label, v, g, unit) => g > 0
+      ? h('div', { class: 'prog' }, h('div', { class: 'top' }, h('span', {}, label), h('span', { class: 'muted' }, `${v} / ${g} · ${pct(v, g)}%`)), bar(v, g))
+      : null;
+
+    const logged = today && today.entered;
+    const cta = h('div', { class: 'card cta' },
+      h('div', {}, h('h2', {}, logged ? "Today's activity is logged" : "Log today's activity"),
+        h('div', { class: 'muted' }, logged ? 'You can update today’s numbers if anything changed.' : 'Add today’s numbers to move your progress toward your goals.')),
+      h('button', { class: 'btn primary', onclick: () => { state.tab = 'log'; render(); } }, logged ? 'Update today' : 'Log today'));
+
+    const missingCard = h('div', { class: 'card' }, h('h2', {}, 'Past 7 days'),
+      missing.length
+        ? [h('div', { class: 'msg err', style: 'margin:0 0 8px' }, `${missing.length} day${missing.length > 1 ? 's' : ''} missing a log — tap a date to log it:`),
+          h('div', { class: 'row' }, missing.map((d) => h('button', { class: 'pill bad chip', title: 'Log this day', onclick: () => { state.logDate = d.date; state.tab = 'log'; render(); } }, fmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }), ' · Log')))]
+        : h('div', { class: 'msg ok', style: 'margin:0' }, 'All caught up — every day is logged.'));
+
+    const goalCard = (title, vals, goalOf, note) => h('div', { class: 'card' }, h('h2', {}, title), note && h('div', { class: 'muted', style: 'margin-bottom:10px' }, note),
+      GOAL_METRICS.map(([k, label]) => row(label, vals[k], goalOf(k))).filter(Boolean));
+    const anyGoal = GOAL_METRICS.some(([k]) => goals[k] > 0);
+
+    host.replaceChildren(cta,
+      anyGoal ? h('div', { class: 'grid2' },
+        goalCard("Today's goal", today || {}, daily, `${fmt(state.today, { weekday: 'long', month: 'short', day: 'numeric' })}`),
+        goalCard('Weekly goal', cur.totals, (k) => goals[k], `${short(cur.weekStart)} – ${short(cur.weekEnd)}`))
+        : h('div', { class: 'card' }, h('div', { class: 'muted' }, 'No goals set yet. Your admin sets weekly targets for you.')),
+      missingCard);
+  }
+
+  function goalHistoryCard(history, mine) {
+    const changes = (e) => GOAL_METRICS.filter(([k]) => e.from[k] !== e.to[k]).map(([k, l]) => `${l}: ${e.from[k]} → ${e.to[k]}`).join(', ');
+    return h('div', { class: 'card' }, h('h2', {}, 'Goal history'),
+      history.length
+        ? h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Changed by'), h('th', {}, 'Change'))),
+          h('tbody', {}, history.map((e) => h('tr', {},
+            h('td', {}, new Date(e.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })),
+            h('td', {}, e.by === 'self' ? (mine ? 'You' : 'Agent') : `${e.byName} (admin)`),
+            h('td', { style: 'text-align:left' }, changes(e) || '—'))))))
+        : h('div', { class: 'muted' }, 'No changes yet.'));
+  }
+
+  async function myGoalsView(host) {
+    host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
+    const { goals, history } = await api('GET', '/api/goals');
+    const msg = h('div', { role: 'status' });
+    const form = h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await api('PUT', '/api/goals', { ...readNumbers(form, GOAL_METRICS), leads: 0 });
+          flash(msg, 'Goals saved.', true);
+          myGoalsView(host).catch(console.error);
+        } catch (err) { flash(msg, err.message, false); }
+      },
+    }, h('div', { class: 'grid' }, numberInputs(goals, 'mg-', GOAL_METRICS)),
+      h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
+    host.replaceChildren(
+      h('div', { class: 'card' }, h('h2', {}, 'My weekly goals'),
+        h('p', { class: 'muted' }, 'Set your weekly targets. Daily goals on the Home tab are worked out from these. Leads are tracked only and have no goal.'), form),
+      goalHistoryCard(history, true));
+  }
+
   function logView(host) {
-    let date = state.today;
+    let date = state.logDate || state.today;
+    state.logDate = null;
     const msg = h('div', { role: 'status' });
     const formHost = h('div', {});
     async function load() {
@@ -137,6 +234,7 @@
         h('tbody', {}, active.map((a) => h('tr', {},
           h('td', {}, h('button', { class: 'link', onclick: () => agentDetail(host, a) }, a.name)),
           METRICS.map(([k]) => {
+            if (k === 'leads') return h('td', { class: 'cell' }, a.totals[k]);
             const p = pct(a.totals[k], a.goals[k]);
             return h('td', { class: 'cell' }, a.totals[k], h('small', {}, a.goals[k] > 0 ? `${p}% of ${a.goals[k]}` : 'no goal'));
           }),
@@ -150,6 +248,7 @@
     const inner = h('div', {});
     host.replaceChildren(h('div', { style: 'margin-bottom:12px' }, back, ' ', h('strong', {}, a.name)), inner);
     dashboardView(inner, `/api/admin/agents/${a.id}/dashboard`).catch(console.error);
+    api('GET', `/api/admin/agents/${a.id}/goal-history`).then(({ history }) => host.append(goalHistoryCard(history, false))).catch(console.error);
   }
 
   async function goalsView(host) {
@@ -161,9 +260,9 @@
         onsubmit: async (e) => {
           e.preventDefault();
           if (note && !confirm(note)) return;
-          try { await save(readNumbers(form)); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
+          try { await save({ ...readNumbers(form, GOAL_METRICS), leads: 0 }); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
         },
-      }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-')), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
+      }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-', GOAL_METRICS)), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
       return h('div', { class: 'card' }, h('h2', {}, title), form);
     }
     host.replaceChildren(
@@ -217,7 +316,7 @@
     const isAdmin = state.user.role === 'admin';
     const tabs = isAdmin
       ? [['overview', 'Team', overviewView], ['goals', 'Weekly goals', goalsView], ['agents', 'Agents', agentsView], ['account', 'Account', accountView]]
-      : [['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['account', 'Account', accountView]];
+      : [['home', 'Home', homeView], ['dashboard', 'My week', (host) => dashboardView(host, '/api/dashboard')], ['log', 'Log today', logView], ['mygoals', 'My goals', myGoalsView], ['account', 'Account', accountView]];
     if (!state.tab || !tabs.some((t) => t[0] === state.tab)) state.tab = tabs[0][0];
     const host = h('main', {});
     const view = tabs.find((t) => t[0] === state.tab)[2];
