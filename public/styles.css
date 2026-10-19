@@ -52,3 +52,6 @@ header.top .muted { color: var(--brand-ink); opacity: .85; }
 header.top .btn { background: var(--brand-ink); color: var(--brand); border-color: var(--brand-ink); }
 .bar > i { background: var(--accent); }
 .chip { border: 1px solid var(--bad); font: inherit; font-size: 12px; cursor: pointer; background: var(--card); } .chip:hover { background: var(--bad); color: var(--brand-ink); }
+.bar.low > i { background: var(--bad); }
+.bar.mid > i { background: #f2c41d; }
+.bar.done > i { background: var(--ok); }

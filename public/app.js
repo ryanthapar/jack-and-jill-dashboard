@@ -33,6 +33,8 @@
   const weekStartOf = (s) => addDays(s, -((new Date(s + 'T00:00:00Z').getUTCDay() + 6) % 7));
   const fmt = (s, opts) => new Date(s + 'T00:00:00Z').toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
   const short = (s) => fmt(s, { month: 'short', day: 'numeric' });
+  // Progress colour: under 50% red, 50-99% yellow, 100%+ green.
+  const barLevel = (p) => (p >= 100 ? 'done' : p >= 50 ? 'mid' : 'low');
   const pct = (v, g) => (g > 0 ? Math.round((v / g) * 100) : null);
   function flash(el, text, ok) { el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = text; }
 
@@ -85,7 +87,7 @@
         h('div', { class: 'top' },
           h('span', { class: 'val' }, totals[k], goals[k] > 0 && h('span', { class: 'of' }, ` / ${goals[k]}`)),
           goals[k] > 0 ? null : h('span', { class: 'goal' }, 'no goal set')),
-        h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })),
+        h('div', { class: 'bar ' + barLevel(p) }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })),
         h('div', { class: 'muted' }, p == null ? '—' : left === 0 ? `${p}% of weekly goal · goal reached` : `${p}% of weekly goal · ${left} to go`));
     }));
   }
@@ -136,7 +138,7 @@
     const pastWeek = [...prev.daily, ...cur.daily].filter((d) => d.date < state.today && d.date >= addDays(state.today, -7));
     const missing = pastWeek.filter((d) => !d.entered);
 
-    const bar = (v, g) => { const p = pct(v, g); return h('div', { class: 'bar' + (p >= 100 ? ' done' : '') }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })); };
+    const bar = (v, g) => { const p = pct(v, g); return h('div', { class: 'bar ' + barLevel(p) }, h('i', { style: `width:${Math.min(p || 0, 100)}%` })); };
     const row = (label, v, g, unit) => g > 0
       ? h('div', { class: 'prog' }, h('div', { class: 'top' }, h('span', {}, label), h('span', { class: 'muted' }, `${v} / ${g} · ${pct(v, g)}%`)), bar(v, g))
       : null;
