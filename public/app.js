@@ -127,6 +127,17 @@
     load().catch((er) => flash(msg, er.message, false));
   }
 
+  function goalForm(title, values, save, note) {
+    const msg = h('div', { role: 'status' });
+    const form = h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        if (note && !confirm(note)) return;
+        try { await save(readNumbers(form)); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
+      },
+    }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-')), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
+    return h('div', { class: 'card' }, h('h2', {}, title), form);
+  }
   async function overviewView(host) {
     host.replaceChildren(h('div', { class: 'muted' }, 'Loading…'));
     const data = await api('GET', `/api/admin/overview?week=${state.week}`);
@@ -142,7 +153,8 @@
           }),
           h('td', {}, `${a.daysEntered}/7`))))))
       : h('div', { class: 'muted' }, 'No agents yet. Add one in the Agents tab.');
-    host.replaceChildren(weekNav((w) => { state.week = w; overviewView(host).catch(console.error); }), h('div', { class: 'card' }, h('h2', {}, 'Team progress'), body));
+    host.replaceChildren(weekNav((w) => { state.week = w; overviewView(host).catch(console.error); }), h('div', { class: 'card' }, h('h2', {}, 'Team progress'), body),
+      goalForm('Weekly goals — set for all agents', null, (v) => api('PUT', '/api/admin/goals/all', v), 'This overwrites every active and inactive agent\'s current goals. Continue?'));
   }
 
   function agentDetail(host, a) {
@@ -155,17 +167,6 @@
   async function goalsView(host) {
     const { agents } = await api('GET', `/api/admin/overview?week=${state.week}`);
     const active = agents.filter((a) => a.active);
-    function goalForm(title, values, save, note) {
-      const msg = h('div', { role: 'status' });
-      const form = h('form', {
-        onsubmit: async (e) => {
-          e.preventDefault();
-          if (note && !confirm(note)) return;
-          try { await save(readNumbers(form)); flash(msg, 'Goals saved.', true); } catch (err) { flash(msg, err.message, false); }
-        },
-      }, h('div', { class: 'grid' }, numberInputs(values, 'g' + Math.random().toString(36).slice(2) + '-')), h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary' }, 'Save goals')), msg);
-      return h('div', { class: 'card' }, h('h2', {}, title), form);
-    }
     host.replaceChildren(
       h('p', { class: 'muted' }, 'Goals are weekly targets and apply to every week going forward.'),
       goalForm('Set for all agents', null, (v) => api('PUT', '/api/admin/goals/all', v), 'This overwrites every active and inactive agent\'s current goals. Continue?'),
