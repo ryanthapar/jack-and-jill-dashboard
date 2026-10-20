@@ -81,6 +81,37 @@
     }));
   }
 
+  const SVG = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    const el = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+  function pie(label, value, goal) {
+    const p = pct(value, goal);
+    const R = 40, C = 2 * Math.PI * R;
+    const chart = svg('svg', { viewBox: '0 0 100 100', role: 'img', 'aria-label': `${label}: ${value} of ${goal}` });
+    chart.append(
+      svg('circle', { cx: 50, cy: 50, r: R, fill: 'none', stroke: 'var(--track)', 'stroke-width': 16 }),
+      svg('circle', { cx: 50, cy: 50, r: R, fill: 'none', stroke: p >= 100 ? 'var(--ok)' : 'var(--brand)', 'stroke-width': 16,
+        'stroke-dasharray': `${(Math.min(p || 0, 100) / 100) * C} ${C}`, transform: 'rotate(-90 50 50)' }));
+    const mid = svg('text', { x: 50, y: 56, 'text-anchor': 'middle', 'font-size': 18, 'font-weight': 700, fill: 'var(--text)' });
+    mid.textContent = p == null ? '—' : `${p}%`;
+    chart.append(mid);
+    return h('div', { class: 'pie' }, chart, h('div', { class: 'pie-label' }, label), h('div', { class: 'muted' }, goal > 0 ? `${value} / ${goal}` : 'no goal set'));
+  }
+  function pieCard(title, sub, totals, goals) {
+    return h('div', { class: 'card' }, h('h2', {}, title, ' ', h('span', { class: 'muted' }, sub)),
+      h('div', { class: 'pies' }, METRICS.map(([k, label]) => pie(label, totals[k], goals[k]))));
+  }
+  function goalPies(periods, week) {
+    return [
+      pieCard("Today's goal", fmt(periods.today, { weekday: 'short', month: 'short', day: 'numeric' }), periods.day.totals, periods.day.goals),
+      pieCard('Weekly goal', `${short(week.weekStart)} – ${short(week.weekEnd)}`, week.totals, week.goals),
+      pieCard('Monthly goal', fmt(periods.monthStart, { month: 'long', year: 'numeric' }), periods.month.totals, periods.month.goals),
+    ];
+  }
+
   function dailyTable(daily) {
     return h('div', { class: 'tablewrap' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Day'), METRICS.map(([, l]) => h('th', {}, l)), h('th', {}, 'Logged'))),
@@ -98,6 +129,7 @@
     host.replaceChildren(...[
       extra ? extra(data) : null,
       weekNav((w) => { state.week = w; dashboardView(host, url, extra).catch(console.error); }),
+      ...goalPies(data.periods, data),
       metricCards(data.totals, data.goals),
       h('div', { class: 'card' }, h('h2', {}, 'Daily breakdown'), dailyTable(data.daily))].filter(Boolean));
   }
@@ -153,7 +185,9 @@
           }),
           h('td', {}, `${a.daysEntered}/7`))))))
       : h('div', { class: 'muted' }, 'No agents yet. Add one in the Agents tab.');
-    host.replaceChildren(weekNav((w) => { state.week = w; overviewView(host).catch(console.error); }), h('div', { class: 'card' }, h('h2', {}, 'Team progress'), body),
+    host.replaceChildren(weekNav((w) => { state.week = w; overviewView(host).catch(console.error); }),
+      ...goalPies({ today: data.team.today, monthStart: data.team.monthStart || data.team.today.slice(0, 8) + '01', day: data.team.day, month: data.team.month }, { weekStart: data.weekStart, weekEnd: data.weekEnd, ...data.team.week }),
+      h('div', { class: 'card' }, h('h2', {}, 'Team progress'), body),
       goalForm('Weekly goals — set for all agents', null, (v) => api('PUT', '/api/admin/goals/all', v), 'This overwrites every active and inactive agent\'s current goals. Continue?'));
   }
 

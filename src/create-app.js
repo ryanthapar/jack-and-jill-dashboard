@@ -79,6 +79,32 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
   }
   const weekReport = async (id, start) => (await weekReports([id], start))[id];
 
+  // Today's and this month's progress. Goals are stored weekly, so the daily goal is a seventh of
+  // the weekly one and the monthly goal scales by the month's length in weeks.
+  async function periodReports(userIds) {
+    const today = todayUTC();
+    const [y, m] = today.split('-').map(Number);
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const monthStart = `${today.slice(0, 8)}01`;
+    const monthEnd = addDays(monthStart, daysInMonth - 1);
+    const weeks = [];
+    for (let w = weekStart(monthStart); w <= monthEnd; w = addDays(w, 7)) weeks.push(w);
+    const [weekStats, goals] = await Promise.all([Promise.all(weeks.map((w) => store.getWeekStats(userIds, w))), store.getGoals(userIds)]);
+    return Object.fromEntries(userIds.map((id) => {
+      const day = zero();
+      const month = zero();
+      for (const ws of weekStats) {
+        for (const [date, r] of Object.entries(ws[id] || {})) {
+          if (date === today) for (const k of METRICS) day[k] += r[k];
+          if (date >= monthStart && date <= monthEnd) for (const k of METRICS) month[k] += r[k];
+        }
+      }
+      const g = goals[id] || zero();
+      const scale = (f) => Object.fromEntries(METRICS.map((k) => [k, Math.ceil(g[k] * f)]));
+      return [id, { today, monthStart, monthEnd, day: { totals: day, goals: scale(1 / 7) }, month: { totals: month, goals: scale(daysInMonth / 7) } }];
+    }));
+  }
+
   function resolveWeek(req) {
     const s = req.query.week;
     return weekStart(isDate(s) ? s : todayUTC());
@@ -140,15 +166,24 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
     res.json({ ok: true });
   });
 
-  app.get('/api/dashboard', requireAuth, async (req, res) => res.json(await weekReport(req.user.id, resolveWeek(req))));
+  app.get('/api/dashboard', requireAuth, async (req, res) => {
+    const [report, periods] = await Promise.all([weekReport(req.user.id, resolveWeek(req)), periodReports([req.user.id])]);
+    res.json({ ...report, periods: periods[req.user.id] });
+  });
 
   // ---- admin ----
   app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
     const start = resolveWeek(req);
     const agents = await store.listAgents();
-    const reports = await weekReports(agents.map((a) => a.id), start);
+    const ids = agents.map((a) => a.id);
+    const [reports, periods] = await Promise.all([weekReports(ids, start), periodReports(ids)]);
+    const team = { week: { totals: zero(), goals: zero() }, day: { totals: zero(), goals: zero() }, month: { totals: zero(), goals: zero() } };
+    for (const a of agents.filter((x) => x.active)) {
+      const parts = { week: reports[a.id], day: periods[a.id].day, month: periods[a.id].month };
+      for (const [p, src] of Object.entries(parts)) for (const k of METRICS) { team[p].totals[k] += src.totals[k]; team[p].goals[k] += src.goals[k]; }
+    }
     res.json({
-      weekStart: start, weekEnd: addDays(start, 6),
+      weekStart: start, weekEnd: addDays(start, 6), team: { ...team, today: todayUTC(), monthStart: periods[ids[0]]?.monthStart },
       agents: agents.map((a) => ({ id: a.id, name: a.name, email: a.email, active: a.active, ...reports[a.id] })),
     });
   });
@@ -156,7 +191,8 @@ function createApp(store, { secureCookies = false, sessionSecret } = {}) {
   app.get('/api/admin/agents/:id/dashboard', requireAuth, requireAdmin, async (req, res) => {
     const u = await userById(req.params.id);
     if (!u || u.role !== 'agent') return res.status(404).json({ error: 'Agent not found' });
-    res.json({ agent: publicUser(u), ...(await weekReport(u.id, resolveWeek(req))) });
+    const [report, periods] = await Promise.all([weekReport(u.id, resolveWeek(req)), periodReports([u.id])]);
+    res.json({ agent: publicUser(u), ...report, periods: periods[u.id] });
   });
 
   app.post('/api/admin/agents', requireAuth, requireAdmin, async (req, res) => {

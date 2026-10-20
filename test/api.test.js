@@ -115,3 +115,21 @@ test('a hung database call fails fast instead of hanging', async () => {
   await assert.rejects(hung.getUser('x'), /timed out/);
   assert.ok(Date.now() - t < 1000);
 });
+
+test('dashboard includes today and month progress with scaled goals', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const days = new Date(Date.UTC(+today.slice(0, 4), +today.slice(5, 7), 0)).getUTCDate();
+  const admin = await login('admin@x.com');
+  await admin('PUT', '/api/admin/goals/all', counts(14));
+  const cy = await login('ann@x.com');
+  assert.equal((await cy('PUT', '/api/stats', { date: today, ...counts(3) })).status, 200);
+  const { periods } = (await cy('GET', '/api/dashboard')).body;
+  assert.equal(periods.today, today);
+  assert.equal(periods.day.totals.doors, 3);
+  assert.equal(periods.day.goals.doors, 2);
+  assert.equal(periods.month.totals.doors, 3);
+  assert.equal(periods.month.goals.doors, Math.ceil((14 * days) / 7));
+  const { team } = (await admin('GET', '/api/admin/overview')).body;
+  assert.equal(team.day.totals.doors, 3);
+  assert.equal(team.month.goals.doors, 2 * Math.ceil((14 * days) / 7));
+});
